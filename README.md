@@ -2,8 +2,11 @@
 
 ## **Workflow**
 
-![workflow](https://user-images.githubusercontent.com/42958809/167774736-f059e43b-2de6-4cae-bc5a-dc9b02e0606a.png)
+![wm omic-subtypeclassification](https://user-images.githubusercontent.com/42958809/194182433-91ead695-8cce-40d0-9d96-eaca163a0ce4.png) 
 
+![wm omic-1st_filtering](https://user-images.githubusercontent.com/42958809/194182493-ce4330f0-aab7-4fd6-9f52-c5f9481c8be7.png)
+
+![wm omic-2nd_filtering](https://user-images.githubusercontent.com/42958809/194182500-08b84c1b-b713-4acf-a8ef-aaa09f3bddca.png)
 
 ## **Environment**
 
