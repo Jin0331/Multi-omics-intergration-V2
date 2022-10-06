@@ -2,7 +2,7 @@
 
 ## **Workflow**
 
-![wm omic-subtypeclassification](https://user-images.githubusercontent.com/42958809/194182433-91ead695-8cce-40d0-9d96-eaca163a0ce4.png) 
+![wm omic-subtypeclassification](https://user-images.githubusercontent.com/42958809/194195264-bbc1271e-0612-4b94-ba19-2f46fececd11.jpg)
 
 ![wm omic-1st_filtering](https://user-images.githubusercontent.com/42958809/194182493-ce4330f0-aab7-4fd6-9f52-c5f9481c8be7.png)
 
