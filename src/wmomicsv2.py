@@ -151,148 +151,6 @@ def non_zero_column(DF):
     
     return non_remove_feature
 
-def load_tcga_dataset(pkl_path, raw_path, cancer_type, norm, minmax=None):    
-    if os.path.isfile(pkl_path + cancer_type + "_omics.pkl"):
-        omics = pd.read_pickle(pkl_path  + cancer_type + "_omics.pkl")
-
-        # sep
-        rna = pd.read_pickle(pkl_path  + cancer_type + "_rna.pkl")
-        mirna = pd.read_pickle(pkl_path + cancer_type + "_mirna.pkl")
-        mt = pd.read_pickle(pkl_path  + cancer_type + "_mt.pkl")
-        
-        # intersect
-        venn3_unweighted([set(rna.index), set(mirna.index), set(mt.index)], ('RNA', 'miRNA', 'Methylation'))
-        # plt.show()
-        plt.ioff()
-        plt.savefig(raw_path + cancer_type + "_subset.png")
-        
-    else :
-        # create dir
-        Path(pkl_path).mkdir(parents=True, exist_ok=True)
-        Path(raw_path).mkdir(parents=True, exist_ok=True)
-        
-        # file name
-        mrna_f = 'tcga_RSEM_Hugo_norm_count.xena.gz'
-        mirna_f = 'Batch_effects_normalized_miRNA.xena.gz'
-        mt_f = 'Methylation450K.xena.gz'
-        mt_probe_f = 'Methylation450K.hg19.GPL16304'
-
-        # file url
-        mrna_url = "https://toil-xena-hub.s3.us-east-1.amazonaws.com/download/tcga_RSEM_Hugo_norm_count.gz"
-        mirna_url = "https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/pancanMiRs_EBadjOnProtocolPlatformWithoutRepsWithUnCorrectMiRs_08_04_16.xena.gz"
-        mt_url = "https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/jhu-usc.edu_PANCAN_HumanMethylation450.betaValue_whitelisted.tsv.synapse_download_5096262.xena.gz"
-        mt_probe_url = "https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/probeMap%2FilluminaMethyl450_hg19_GPL16304_TCGAlegacy"
-
-         # to make GET request
-        def download(url, file_name):
-            with open(file_name, "wb") as file:   # open in binary mode
-                response = get(url)               # get request
-                file.write(response.content)      # write to file
-
-        # mrna
-        if os.path.isfile(raw_path + mrna_f) == False:
-            download(mrna_url, raw_path + mrna_f)
-
-        # mirna
-        if os.path.isfile(raw_path + mirna_f) == False:
-            download(mirna_url, raw_path + mirna_f)
-
-        # methylation
-        if os.path.isfile(raw_path + mt_f) == False:
-            download(mt_url, raw_path + mt_f)
-            download(mt_probe_url, raw_path + mt_probe_f)
-        
-        
-        # RNA gene expression
-        if os.path.isfile(pkl_path + cancer_type + "_rna.pkl") == False:
-            col = pd.read_csv(raw_path + mrna_f,
-                         sep = "\t", index_col=0, nrows=0).columns.to_list()
-            use_col = ['sample'] + cancer_select(cols=col, cancer_type=cancer_type, raw_path=raw_path)
-            df_chunk = pd.read_csv(raw_path + mrna_f,
-                         sep = "\t", index_col=0, iterator=True, chunksize=50000, usecols=use_col)
-            rna = pd.concat([chunk for chunk in df_chunk])
-            rna = rna[rna.index.isin(non_zero_column(rna))].T
-
-            rna.to_pickle(pkl_path + cancer_type + "_rna.pkl")
-        else : 
-            rna = pd.read_pickle(pkl_path  + cancer_type + "_rna.pkl")
-            
-        # miRNA expression
-        if os.path.isfile(pkl_path + cancer_type + "_mirna.pkl") == False:            
-            col = pd.read_csv(raw_path + mirna_f, sep = "\t", index_col=0, nrows=0).columns.to_list()
-            use_col = ['sample'] + cancer_select(cols=col, cancer_type=cancer_type, raw_path=raw_path)
-
-            df_chunk = pd.read_csv(raw_path + mirna_f, sep = "\t", index_col=0, iterator=True, chunksize=50000, usecols=use_col)
-            mirna = pd.concat([chunk for chunk in df_chunk])
-            mirna = mirna[mirna.index.isin(non_zero_column(mirna))].T
-
-            mirna.to_pickle(pkl_path + cancer_type + "_mirna.pkl")
-        else :
-            mirna = pd.read_pickle(pkl_path + cancer_type + "_mirna.pkl")            
-            
-        # methylation
-        if os.path.isfile(pkl_path + cancer_type + "_mt.pkl") == False: 
-            col = pd.read_csv(raw_path + mt_f, sep = "\t", index_col=0, nrows=0).columns.to_list()
-            use_col = ['sample'] + cancer_select(cols=col, cancer_type=cancer_type, raw_path=raw_path)
-
-            df_chunk = pd.read_csv(raw_path + mt_f, sep = "\t", index_col=0, iterator=True, chunksize=50000, usecols=use_col)
-            mt = pd.concat([chunk for chunk in df_chunk])
-
-            mt_map = pd.read_csv(raw_path + mt_probe_f, sep="\t")
-
-            mt_join = pd.merge(mt, mt_map, how = "left", left_on = "sample", right_on = "#id")\
-                     .drop(['chrom', 'chromStart', 'chromEnd', 'strand', '#id'], axis=1)
-            mt_join = mt_join[mt_join.gene != "."]
-            mt_join.dropna(subset = ["gene"], inplace=True)
-
-            # gene mean 
-            mt_join_gene_filter = mt_join.groupby(['gene']).mean()
-            mt_join_gene_filter = mt_join_gene_filter[mt_join_gene_filter.index.isin(non_zero_column(mt_join_gene_filter))].T
-
-            mt_join_gene_filter.to_pickle(pkl_path + cancer_type + "_mt.pkl")
-        else :
-            mt_join_gene_filter = pd.read_pickle(pkl_path + cancer_type + "_mt.pkl")            
-            
-        
-        # intersect
-        venn3_unweighted([set(rna.index), set(mirna.index), set(mt_join_gene_filter.index)], ('RNA', 'miRNA', 'Methylation'))
-        # plt.show()
-        plt.ioff()
-        plt.savefig(raw_path + cancer_type + "_subset.png")
-        
-        # set same column for merge
-        rna['sample'] = rna.index
-        mirna['sample'] = mirna.index
-        mt_join_gene_filter['sample'] = mt_join_gene_filter.index
-
-        # data join
-        merge_list = [rna, mirna, mt_join_gene_filter]
-        omics = reduce(lambda left, right : pd.merge(left, right, on = "sample"), merge_list)
-        omics.set_index('sample', inplace=True)
-
-        # pickle save
-        omics.to_pickle(pkl_path + "/" + cancer_type + "_omics.pkl")
-    
-    # set index
-    omics_index = omics.index.to_list()
-    
-    # normalization
-    if norm:
-        if minmax:
-            scalerX = MinMaxScaler()
-            omics_scale = scalerX.fit_transform(omics)
-        else :
-            scalerX = StandardScaler()      
-            omics_scale = scalerX.fit_transform(omics)
-    
-    # missing impute
-    imputer = KNNImputer(n_neighbors=10)
-    omics_impute = imputer.fit_transform(omics_scale)
-
-    omics = pd.DataFrame(omics_impute, columns=omics.columns)
-    omics.index = omics_index
-
-    return omics
 
 def load_tcga_dataset_version2(pkl_path, raw_path, cancer_type, norm=None, minmax=None):    
     if os.path.isfile(pkl_path + cancer_type + "_omics.pkl"):
@@ -324,16 +182,16 @@ def load_tcga_dataset_version2(pkl_path, raw_path, cancer_type, norm=None, minma
         # file name
         mut_f = 'mc3.v0.2.8.PUBLIC.maf.gz'
         cnv_f = 'broad.mit.edu_PANCAN_Genome_Wide_SNP_6_whitelisted.gene.xena.gz'
-        mrna_f = 'tcga_RSEM_Hugo_norm_count.xena.gz'
-        mirna_f = 'Batch_effects_normalized_miRNA.xena.gz'
+        mrna_f = 'tcga_gene_expected_count.gz'
+        mirna_f = 'TCGA.PANCAN.sampleMap%2FmiRNA_HiSeq_gene.gz'
         mt_f = 'Methylation450K.xena.gz'
         mt_probe_f = 'Methylation450K.hg19.GPL16304'
         protein_f = 'TCGA-RPPA-pancan-clean.xena.gz'
 
         # file url
         cnv_url = 'https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/broad.mit.edu_PANCAN_Genome_Wide_SNP_6_whitelisted.gene.xena.gz'
-        mrna_url = "https://toil-xena-hub.s3.us-east-1.amazonaws.com/download/tcga_RSEM_Hugo_norm_count.gz"
-        mirna_url = "https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/pancanMiRs_EBadjOnProtocolPlatformWithoutRepsWithUnCorrectMiRs_08_04_16.xena.gz"
+        mrna_url = "https://toil-xena-hub.s3.us-east-1.amazonaws.com/download/tcga_gene_expected_count.gz"
+        mirna_url = "https://tcga-xena-hub.s3.us-east-1.amazonaws.com/download/TCGA.PANCAN.sampleMap%2FmiRNA_HiSeq_gene.gz"
         mt_url = "https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/jhu-usc.edu_PANCAN_HumanMethylation450.betaValue_whitelisted.tsv.synapse_download_5096262.xena.gz"
         mt_probe_url = "https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/probeMap%2FilluminaMethyl450_hg19_GPL16304_TCGAlegacy"
         protein_url = 'https://tcga-pancan-atlas-hub.s3.us-east-1.amazonaws.com/download/TCGA-RPPA-pancan-clean.xena.gz'
@@ -409,7 +267,7 @@ def load_tcga_dataset_version2(pkl_path, raw_path, cancer_type, norm=None, minma
         # miRNA expression
         if os.path.isfile(pkl_path + cancer_type + "_mirna.pkl") == False:            
             col = pd.read_csv(raw_path + mirna_f, sep = "\t", index_col=0, nrows=0).columns.to_list()
-            use_col = ['sample'] + cancer_select(cols=col, cancer_type=cancer_type, raw_path=raw_path)
+            use_col = ['Sample'] + cancer_select(cols=col, cancer_type=cancer_type, raw_path=raw_path)
 
             df_chunk = pd.read_csv(raw_path + mirna_f, sep = "\t", index_col=0, iterator=True, chunksize=50000, usecols=use_col)
             mirna = pd.concat([chunk for chunk in df_chunk])
@@ -471,26 +329,23 @@ def load_tcga_dataset_version2(pkl_path, raw_path, cancer_type, norm=None, minma
         mirna.columns = ["miRna."+ value for value in mirna.columns.to_list()]
         mt_join_gene_filter.columns = ["Meth."+ value for value in mt_join_gene_filter.columns.to_list()]
         protein.columns = ["Protein."+ value for value in protein.columns.to_list()]     
+        omics_list = [mut, cnv, rna, mirna, mt_join_gene_filter, protein]
         
-        # imputation
-        omics = list(map(impute_function, [mut, cnv, rna, mirna, mt_join_gene_filter, protein]))
+        # imputation        
+        omics_list = list(map(lambda x : x.loc[:, x.isnull().mean() < .8], omics_list)) # NA ratio check -- 0.8 remove
+        omics_list = list(map(impute_function, omics_list))
         
         # pickle save
         # omics.to_pickle(pkl_path + "/" + cancer_type + "_omics.pkl")
         with open(pkl_path + "/" + cancer_type + "_omics.pkl","wb") as f:
-            pickle.dump(omics, f)
+            pickle.dump(omics_list, f)
     
-    return omics
+    return omics_list
 
 
 def root_mean_squared_log_error(y_true, y_pred):
     msle = tf.keras.losses.MeanSquaredLogarithmicError()
     return K.sqrt(msle(y_true, y_pred)) 
-
-def make_Tensorboard_dir(dir_name):
-    root_logdir = os.path.join(os.curdir, dir_name) 
-    sub_dir_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") 
-    return os.path.join(root_logdir, sub_dir_name)
 
 def create_blok(x, units):
     x = Dense(units)(x)
@@ -503,10 +358,8 @@ def stacked_ae(n_inputs, loss, neurons, n_bottleneck):
     e = create_blok(e, int(neurons*3/4))
     e = create_blok(e, int(neurons*2/4))
     e = create_blok(e, int(neurons*1/4))
-    e = create_blok(e, int(neurons*1/(4*2)))
     bottleneck = Dense(n_bottleneck)(e)
-    d = create_blok(bottleneck, int(neurons*1/(4*2)))
-    d = create_blok(d, int(neurons*1/4))
+    d = create_blok(bottleneck, int(neurons*1/4))
     d = create_blok(d, int(neurons*2/4))
     d = create_blok(d, int(neurons*3/4))
     d = create_blok(d, int(neurons))
@@ -517,6 +370,26 @@ def stacked_ae(n_inputs, loss, neurons, n_bottleneck):
 
     return model
 
+def stacked_encoder(best_param, X):
+    visible = Input(shape=(best_param['n_inputs'],))
+    e = create_blok(visible, int(best_param['neurons']))
+    e = create_blok(e, int(best_param['neurons']*3/4))
+    e = create_blok(e, int(best_param['neurons']*2/4))
+    e = create_blok(e, int(best_param['neurons']*1/4))
+    bottleneck = Dense(best_param['n_bottleneck'])(e)
+    d = create_blok(bottleneck, int(best_param['neurons']*1/4))
+    d = create_blok(d, int(best_param['neurons']*2/4))
+    d = create_blok(d, int(best_param['neurons']*3/4))
+    d = create_blok(d, int(best_param['neurons']))
+    output = Dense(best_param['n_inputs'])(d)
+
+    encoder = Model(inputs=visible, outputs=bottleneck) 
+    model = Model(inputs=visible, outputs=output)
+    model.compile(optimizer='adam', loss=best_param['loss'])
+    model.fit(X, X, batch_size=best_param['batch_size'], epochs=50)
+    
+    return encoder
+
 def ae_grid_search(om, binary):
     if binary is True :
         loss = 'binary_crossentropy'
@@ -526,16 +399,16 @@ def ae_grid_search(om, binary):
     # gridsearch Parameter
     n_inputs = [om.shape[1]]
     loss = [loss]
-    n_bottleneck = [50, 100, 150]
-    neurons = [500, 1000, 2000, 3000, 4000]
-    # drop_rate = [0.01, 0.1, 0.2]
-    param_grid = dict(n_inputs=n_inputs, loss=loss, neurons=neurons, n_bottleneck=n_bottleneck)
+    n_bottleneck = [50, 100, 200]
+    neurons = [1000, 2000, 3000]
+    batch_size = [32,64,128,256]
+    param_grid = dict(n_inputs=n_inputs, loss=loss, neurons=neurons, n_bottleneck=n_bottleneck, batch_size=batch_size)
     
     # if mutation
-    model = KerasRegressor(build_fn = stacked_ae, batch_size=128, epochs=10, verbose=0)
+    model = KerasRegressor(build_fn = stacked_ae, epochs=50, verbose=0)
     
-    grid = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, verbose=10)
-    grid_result = grid.fit(om, om)
+    grid = GridSearchCV(estimator=model, param_grid=param_grid, cv=3, verbose=10)
+    grid_result = grid.fit(om, om, callbacks=[EarlyStopping(patience=20)])
     
     print("Best: %f using %s" % (grid_result.best_score_, grid_result.best_params_))
     
@@ -1351,7 +1224,7 @@ def norm_function(omics, minmax):
 def impute_function(omics):
     omics_index = omics.index.to_list()
     
-    imputer = KNNImputer(n_neighbors=10)
+    imputer = KNNImputer(n_neighbors=5)
     omics_impute = imputer.fit_transform(omics)
 
     omics = pd.DataFrame(omics_impute, columns=omics.columns)
